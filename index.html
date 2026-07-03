@@ -124,8 +124,21 @@ const CONFIG = {
 };
 
 /* ---------------- ADAPTERS (each returns normalized jobs) ----------------
-   Normalized job: {id,title,company,location,remote,url,postedAt(ms),tags[],desc,source} */
+   Normalized job: {id,title,company,location,remote,url,postedAt(ms),tags[],desc,source}
+   Direct-API sources are fetched from the browser; scraped sources
+   (StepStone, talent.com, DesignJobs.World) go through our own
+   serverless function at /api/jobs, which fetches them server-side. */
+const API_BASE = location.protocol === "file:" ? "https://job-radar-psi.vercel.app" : "";
+const viaApi = (source) => async () => {
+  const r = await fetch(`${API_BASE}/api/jobs?source=${source}`);
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return d.jobs || [];
+};
 const ADAPTERS = [
+  { id: "stepstone", name: "StepStone (Berlin)", fetch: viaApi("stepstone") },
+  { id: "talent",    name: "talent.com (Berlin)", fetch: viaApi("talent") },
+  { id: "djw",       name: "DesignJobs.World", fetch: viaApi("djw") },
   {
     id: "arbeitnow", name: "Arbeitnow (DE)",
     async fetch() {
