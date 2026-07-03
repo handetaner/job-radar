@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Radar — Hande</title>
+<style>
+  :root{
+    --bg:#0e1117; --panel:#161b24; --panel2:#1d2430; --border:#2a3341;
+    --text:#e6e9ef; --muted:#8b95a7; --accent:#7c6cf0; --accent2:#4cc38a;
+    --high:#4cc38a; --med:#e2b93d; --low:#8b95a7; --danger:#e5534b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding-bottom:80px}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 20px}
+  header{padding:28px 0 18px}
+  h1{font-size:22px;font-weight:700}
+  h1 .dot{color:var(--accent)}
+  .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  .sources{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .chip{font-size:12px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--panel);color:var(--muted);display:flex;align-items:center;gap:6px}
+  .chip .st{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+  .chip.ok .st{background:var(--accent2)}
+  .chip.err .st{background:var(--danger)}
+  .chip.loading .st{background:var(--med);animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.3}}
+  .stats{display:flex;gap:24px;margin-top:16px;flex-wrap:wrap}
+  .stat b{font-size:20px}
+  .stat span{color:var(--muted);font-size:12px;display:block}
+  .bar{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  input[type=search]{flex:1;min-width:180px;background:var(--panel);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:14px;outline:none}
+  input[type=search]:focus{border-color:var(--accent)}
+  select{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:8px;font-size:13px}
+  .tgl{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
+  .tgl input{accent-color:var(--accent)}
+  .tabs{display:flex;gap:4px}
+  .tab{padding:7px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid transparent;color:var(--muted)}
+  .tab.active{background:var(--panel2);color:var(--text);border-color:var(--border)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-top:12px;display:flex;gap:16px;align-items:flex-start;transition:border-color .15s}
+  .card:hover{border-color:#3b475a}
+  .fit{min-width:64px;text-align:center;padding:8px 4px;border-radius:10px;background:var(--panel2)}
+  .fit b{font-size:17px;display:block}
+  .fit span{font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+  .fit.high{color:var(--high)} .fit.med{color:var(--med)} .fit.low{color:var(--low)}
+  .body{flex:1;min-width:0}
+  .title{font-size:16px;font-weight:600}
+  .title a{color:var(--text);text-decoration:none}
+  .title a:hover{color:var(--accent)}
+  .meta{color:var(--muted);font-size:13px;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+  .why{font-size:13px;color:var(--muted);margin-top:8px}
+  .why em{color:var(--accent2);font-style:normal}
+  .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .tag{font-size:11px;background:var(--panel2);border:1px solid var(--border);padding:2px 8px;border-radius:6px;color:var(--muted)}
+  .tag.de{color:var(--med);border-color:var(--med)}
+  .tag.dereq{color:var(--danger);border-color:var(--danger)}
+  .tag.fin{color:var(--accent2);border-color:var(--accent2)}
+  .acts{display:flex;flex-direction:column;gap:8px}
+  .btn{border:1px solid var(--border);background:var(--panel2);color:var(--text);padding:7px 14px;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;text-decoration:none;text-align:center}
+  .btn.saved{color:var(--accent2);border-color:var(--accent2)}
+  .empty{text-align:center;color:var(--muted);padding:60px 0}
+  .foot{color:var(--muted);font-size:12px;margin-top:24px;text-align:center}
+  @media(max-width:640px){.card{flex-direction:column}.acts{flex-direction:row}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Job Radar<span class="dot">.</span></h1>
+    <div class="sub">Live listings for <b>Senior Product Design & adjacent roles</b> · Berlin + Remote (Germany) · English-speaking · fetched fresh on every load — no expired posts</div>
+    <div class="sources" id="sources"></div>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <div class="bar">
+    <input type="search" id="q" placeholder="Search title, company, tags…">
+    <select id="scope">
+      <option value="core">Berlin + Remote</option>
+      <option value="berlin">Berlin only</option>
+      <option value="remote">Remote only</option>
+      <option value="all">All Germany</option>
+    </select>
+    <select id="role">
+      <option value="all">All role tiers</option>
+      <option value="core">Design roles</option>
+      <option value="adjacent">Design-adjacent</option>
+      <option value="business">Business-fit</option>
+    </select>
+    <label class="tgl"><input type="checkbox" id="hideDe" checked> Hide German-required</label>
+    <div class="tabs">
+      <div class="tab active" data-tab="inbox">Inbox</div>
+      <div class="tab" data-tab="saved">Saved</div>
+      <div class="tab" data-tab="hidden">Hidden</div>
+    </div>
+  </div>
+
+  <div id="list"></div>
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+/* =====================================================================
+   JOB RADAR — personal now, SaaS-ready structure.
+   To productize later: CONFIG becomes per-user settings stored server-side,
+   ADAPTERS move to a backend worker with caching, SCORING stays shared.
+   ===================================================================== */
+
+/* ---------------- CONFIG (per-user profile) ---------------- */
+const CONFIG = {
+  city: "berlin",
+  targetCompanies: ["sumup","n26","moss","payrails","mondu","billie","vivid","penta","solarisbank","raisin","clark","revolut","klarna","trade republic"],
+  roleTiers: {
+    core:     /(product|ux|ui|interaction|digital|visual)[\s\-\/]*designer|design(er)?\s*(lead|manager)|ux\s*\/?\s*ui|ui\s*\/?\s*ux|product\s+design/i,
+    adjacent: /(ux|user)\s*research|design\s*(ops|system)|product\s*(owner|manager)|service\s*design|customer\s*experience|cx\s*(design|manager)/i,
+    business: /(product|business|marketing|data)\s*analyst|content\s*(designer|strategist)|digital\s*(consultant|strategist)/i
+  },
+  exclude: /junior|intern(ship)?|praktik|ausbildung|werkstudent|working\s*student|technischer|technische[rn]?\s|mechatronik|maschinenbau|industriedesign|volontariat|trainee|engineer|developer|entwickler|architec?kt/i,
+  seniorBoost: /senior|lead|staff|principal/i,
+  fintechHint: /fintech|bank(ing)?|payment|finanz|financ|insur|crypto|trading|lending|wealth/i,
+  germanRequired: /deutschkenntnisse|deutsch\s*(erforderlich|zwingend|c1|c2)|fluent\s*(in\s*)?german|german\s*(fluency|c1|c2|native|is\s*required)|verhandlungssicher(es)?\s*deutsch/i,
+  germanWords: /\b(und|für|mit|wir|ihre?|deine?|unser\w*|aufgaben|kenntnisse|erfahrung|bewerbung|stellenangebot|arbeiten|suchen)\b/gi,
+  freshDays: 7
+};
+
+/* ---------------- ADAPTERS (each returns normalized jobs) ----------------
+   Normalized job: {id,title,company,location,remote,url,postedAt(ms),tags[],desc,source} */
+const ADAPTERS = [
+  {
+    id: "arbeitnow", name: "Arbeitnow (DE)",
+    async fetch() {
+      const pages = await Promise.all([1,2,3,4,5,6,7,8].map(p =>
+        fetch(`https://www.arbeitnow.com/api/job-board-api?page=${p}`).then(r => r.json()).catch(() => null)));
+      const out = [];
+      for (const pg of pages) {
+        if (!pg || !pg.data) continue;
+        for (const j of pg.data) out.push({
+          id: "an-" + j.slug, title: j.title || "", company: j.company_name || "",
+          location: j.location || "", remote: !!j.remote, url: j.url,
+          postedAt: (j.created_at || 0) * 1000, tags: j.tags || [],
+          desc: strip(j.description || ""), source: "Arbeitnow"
+        });
+      }
+      return out;
+    }
+  },
+  {
+    id: "remotive", name: "Remotive (remote)",
+    async fetch() {
+      const r = await fetch("https://remotive.com/api/remote-jobs?category=design");
+      const d = await r.json();
+      return (d.jobs || []).filter(j =>
+        /german|europe|emea|worldwide|anywhere|international/i.test(j.candidate_required_location || "worldwide")
+      ).map(j => ({
+        id: "rv-" + j.id, title: j.title || "", company: j.company_name || "",
+        location: "Remote · " + (j.candidate_required_location || "Worldwide"), remote: true,
+        url: j.url, postedAt: Date.parse(j.publication_date || 0) || 0,
+        tags: j.tags || [], desc: strip(j.description || ""), source: "Remotive"
+      }));
+    }
+  },
+  {
+    id: "remoteok", name: "RemoteOK (remote)",
+    async fetch() {
+      const r = await fetch("https://remoteok.com/api?tag=design");
+      const d = await r.json();
+      return d.filter(j => j && j.id && j.position).filter(j =>
+        /german|europe|emea|worldwide|anywhere|probably/i.test((j.location || "worldwide"))
+      ).map(j => ({
+        id: "rok-" + j.id, title: j.position || "", company: j.company || "",
+        location: "Remote · " + (j.location || "Worldwide"), remote: true,
+        url: j.url || ("https://remoteok.com/remote-jobs/" + j.id),
+        postedAt: j.date ? Date.parse(j.date) : (j.epoch ? j.epoch * 1000 : 0),
+        tags: j.tags || [], desc: strip(j.description || ""), source: "RemoteOK"
+      }));
+    }
+  }
+];
+
+function strip(html) {
+  const t = document.createElement("div"); t.innerHTML = html;
+  return (t.textContent || "").slice(0, 1500);
+}
+
+/* ---------------- SCORING (pure — shared in future backend) ---------------- */
+function scoreJob(j, cfg) {
+  const hay = j.title; // title only — tags are too noisy for tier matching
+  const full = hay + " " + (j.tags || []).join(" ") + " " + j.desc + " " + j.company;
+
+  if (cfg.exclude.test(j.title)) return null;
+
+  let tier = null;
+  if (cfg.roleTiers.core.test(hay)) tier = "core";
+  else if (cfg.roleTiers.adjacent.test(hay)) tier = "adjacent";
+  else if (cfg.roleTiers.business.test(hay)) tier = "business";
+  if (!tier) return null;
+
+  const inCity = (j.location || "").toLowerCase().includes(cfg.city);
+  if (!inCity && !j.remote) j.otherCity = true; // kept only under "All Germany"
+
+  let s = tier === "core" ? 50 : tier === "adjacent" ? 32 : 18;
+  const why = [];
+  if (tier === "core") why.push("core design role");
+  if (tier === "adjacent") why.push("design-adjacent");
+  if (tier === "business") why.push("fits business background");
+
+  if (cfg.seniorBoost.test(j.title)) { s += 8; why.push("senior level"); }
+  if (inCity) { s += 15; why.push("in Berlin"); }
+  else if (j.remote) { s += 10; why.push("remote"); }
+
+  const target = cfg.targetCompanies.find(c => (j.company || "").toLowerCase().includes(c));
+  if (target) { s += 20; why.push("target company: " + j.company); j.fintech = true; }
+  else if (cfg.fintechHint.test(full)) { s += 10; why.push("fintech domain"); j.fintech = true; }
+
+  const days = j.postedAt ? (Date.now() - j.postedAt) / 864e5 : 99;
+  if (days <= cfg.freshDays) { s += 8; why.push("fresh posting"); }
+
+  j.germanRequired = cfg.germanRequired.test(full);
+  const deHits = (j.desc.match(cfg.germanWords) || []).length;
+  j.germanLang = deHits >= 5;
+  if (j.germanRequired) s -= 30;
+  else if (j.germanLang) { s -= 10; why.push("posting in German — working language may still be English"); }
+
+  j.tier = tier; j.score = Math.max(0, Math.min(100, s)); j.why = why;
+  j.band = s >= 65 ? "high" : s >= 45 ? "med" : "low";
+  return j;
+}
+
+/* ---------------- STATE + STORAGE ---------------- */
+let JOBS = [];
+const store = {
+  get k() { try { return JSON.parse(localStorage.getItem("jobradar") || "{}"); } catch { return {}; } },
+  set(v) { try { localStorage.setItem("jobradar", JSON.stringify(v)); } catch {} }
+};
+let saved = new Set((store.k.saved) || []), hidden = new Set((store.k.hidden) || []);
+let tab = "inbox";
+const persist = () => store.set({ saved: [...saved], hidden: [...hidden] });
+
+/* ---------------- LOAD ---------------- */
+const srcEl = document.getElementById("sources");
+async function load() {
+  srcEl.innerHTML = ADAPTERS.map(a =>
+    `<div class="chip loading" id="src-${a.id}"><span class="st"></span>${a.name}</div>`).join("");
+  const results = await Promise.all(ADAPTERS.map(async a => {
+    const el = document.getElementById("src-" + a.id);
+    try {
+      const jobs = await a.fetch();
+      el.className = "chip ok"; el.innerHTML = `<span class="st"></span>${a.name} · ${jobs.length}`;
+      return jobs;
+    } catch (e) {
+      el.className = "chip err"; el.innerHTML = `<span class="st"></span>${a.name} · unavailable`;
+      return [];
+    }
+  }));
+  const seen = new Set();
+  JOBS = results.flat()
+    .filter(j => { const k = (j.title + j.company).toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+    .map(j => scoreJob(j, CONFIG)).filter(Boolean)
+    .sort((a, b) => b.score - a.score || b.postedAt - a.postedAt);
+  render();
+}
+
+/* ---------------- RENDER ---------------- */
+const listEl = document.getElementById("list"), statsEl = document.getElementById("stats"), footEl = document.getElementById("foot");
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const ago = ms => { if (!ms) return "date unknown"; const d = Math.floor((Date.now() - ms) / 864e5); return d <= 0 ? "today" : d === 1 ? "yesterday" : d + " days ago"; };
+
+function visible() {
+  const q = document.getElementById("q").value.toLowerCase();
+  const scope = document.getElementById("scope").value;
+  const role = document.getElementById("role").value;
+  const hideDe = document.getElementById("hideDe").checked;
+  return JOBS.filter(j => {
+    if (tab === "saved" && !saved.has(j.id)) return false;
+    if (tab === "hidden" && !hidden.has(j.id)) return false;
+    if (tab === "inbox" && hidden.has(j.id)) return false;
+    const inCity = j.location.toLowerCase().includes(CONFIG.city);
+    if (scope === "berlin" && !inCity) return false;
+    if (scope === "remote" && !j.remote) return false;
+    if (scope === "core" && !inCity && !j.remote) return false;
+    if (role !== "all" && j.tier !== role) return false;
+    if (hideDe && j.germanRequired) return false;
+    if (q && !(j.title + " " + j.company + " " + j.tags.join(" ")).toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+function render() {
+  const v = visible();
+  const high = JOBS.filter(j => j.band === "high" && !hidden.has(j.id)).length;
+  statsEl.innerHTML = `
+    <div class="stat"><b>${JOBS.length}</b><span>matched roles (live)</span></div>
+    <div class="stat"><b>${high}</b><span>high fit</span></div>
+    <div class="stat"><b>${saved.size}</b><span>saved</span></div>
+    <div class="stat"><b>${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</b><span>fetched at</span></div>`;
+  if (!v.length) { listEl.innerHTML = `<div class="empty">Nothing here — try widening the filters, or reload for fresh data.</div>`; footEl.textContent = ""; return; }
+  listEl.innerHTML = v.slice(0, 150).map(j => `
+    <div class="card">
+      <div class="fit ${j.band}"><b>${j.score}</b><span>${j.band === "high" ? "High" : j.band === "med" ? "Medium" : "Low"} fit</span></div>
+      <div class="body">
+        <div class="title"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a></div>
+        <div class="meta"><span>${esc(j.company)}</span><span>${esc(j.location)}</span><span>${ago(j.postedAt)}</span><span>${j.source}</span></div>
+        <div class="why">Why: <em>${j.why.join(" · ")}</em></div>
+        <div class="tags">
+          ${j.germanRequired ? '<span class="tag dereq">German required</span>' : j.germanLang ? '<span class="tag de">Posted in German</span>' : ""}
+          ${j.fintech ? '<span class="tag fin">fintech</span>' : ""}
+          ${j.tags.slice(0, 5).map(t => `<span class="tag">${esc(String(t))}</span>`).join("")}
+        </div>
+      </div>
+      <div class="acts">
+        <a class="btn primary" href="${esc(j.url)}" target="_blank" rel="noopener">Open ↗</a>
+        <button class="btn ${saved.has(j.id) ? "saved" : ""}" onclick="toggleSave('${j.id}')">${saved.has(j.id) ? "★ Saved" : "☆ Save"}</button>
+        <button class="btn" onclick="toggleHide('${j.id}')">${hidden.has(j.id) ? "Unhide" : "Hide"}</button>
+      </div>
+    </div>`).join("");
+  footEl.textContent = `Showing ${Math.min(v.length, 150)} of ${v.length}. Sources return active listings only — links are valid as of page load. Reload for fresh data.`;
+}
+
+window.toggleSave = id => { saved.has(id) ? saved.delete(id) : saved.add(id); persist(); render(); };
+window.toggleHide = id => { hidden.has(id) ? hidden.delete(id) : hidden.add(id); persist(); render(); };
+
+["q", "scope", "role", "hideDe"].forEach(id => document.getElementById(id).addEventListener("input", render));
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+  t.classList.add("active"); tab = t.dataset.tab; render();
+}));
+
+load();
+</script>
+</body>
+</html>
