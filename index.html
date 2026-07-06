@@ -87,7 +87,15 @@
       <option value="adjacent">Design-adjacent</option>
       <option value="business">Business-fit</option>
     </select>
-    <label class="tgl"><input type="checkbox" id="hideDe" checked> Hide German-required</label>
+    <select id="age">
+      <option value="1">Last 24 h</option>
+      <option value="3">Last 3 days</option>
+      <option value="7">Last 7 days</option>
+      <option value="14" selected>Last 14 days</option>
+      <option value="30">Last 30 days</option>
+      <option value="0">Any date</option>
+    </select>
+    <label class="tgl"><input type="checkbox" id="engOnly" checked> Hide German-required</label>
     <div class="tabs">
       <div class="tab active" data-tab="inbox">Inbox</div>
       <div class="tab" data-tab="saved">Saved</div>
@@ -118,8 +126,10 @@ const CONFIG = {
   exclude: /junior|intern(ship)?|praktik|ausbildung|werkstudent|working\s*student|technischer|technische[rn]?\s|mechatronik|maschinenbau|industriedesign|volontariat|trainee|engineer|developer|entwickler|architec?kt/i,
   seniorBoost: /senior|lead|staff|principal/i,
   fintechHint: /fintech|bank(ing)?|payment|finanz|financ|insur|crypto|trading|lending|wealth/i,
-  germanRequired: /deutschkenntnisse|deutsch\s*(erforderlich|zwingend|c1|c2)|fluent\s*(in\s*)?german|german\s*(fluency|c1|c2|native|is\s*required)|verhandlungssicher(es)?\s*deutsch/i,
+  germanRequired: /deutschkenntnisse|deutsch\s*(erforderlich|zwingend|c1|c2)|fluent\s*(in\s*)?german|german\s*(fluency|c1|c2|native|is\s*required)|verhandlungssicher(es)?\s*deutsch|(fließend|sehr gute?)\w*[^.!?]{0,40}deutsch/i,
+  germanPlus: /(deutsch\w*|german)[^.!?]{0,90}(von vorteil|vorteilhaft|wünschenswert|a plus|nice[- ]to[- ]have|not (a )?requirement|not required|nicht erforderlich|optional|bonus)/i,
   germanWords: /\b(und|für|mit|wir|ihre?|deine?|unser\w*|aufgaben|kenntnisse|erfahrung|bewerbung|stellenangebot|arbeiten|suchen)\b/gi,
+  germanTitle: /[äöüß]|produktdesigner|produktmanager|entwickler|berater|leiter|referent|mitarbeiter|kaufmann|fachrichtung|gestalter|\b(und|für|bei|zum|zur)\b/i,
   freshDays: 7
 };
 
@@ -228,9 +238,11 @@ function scoreJob(j, cfg) {
   const days = j.postedAt ? (Date.now() - j.postedAt) / 864e5 : 99;
   if (days <= cfg.freshDays) { s += 8; why.push("fresh posting"); }
 
-  j.germanRequired = cfg.germanRequired.test(full);
+  j.germanPlus = cfg.germanPlus.test(full);
+  j.germanRequired = !j.germanPlus && cfg.germanRequired.test(full);
   const deHits = (j.desc.match(cfg.germanWords) || []).length;
-  j.germanLang = deHits >= 5;
+  // If there's no description (scraped sources), judge language from the title
+  j.germanLang = j.desc.length > 100 ? deHits >= 5 : cfg.germanTitle.test(j.title);
   if (j.germanRequired) s -= 30;
   else if (j.germanLang) { s -= 10; why.push("posting in German — working language may still be English"); }
 
@@ -271,6 +283,47 @@ async function load() {
     .map(j => scoreJob(j, CONFIG)).filter(Boolean)
     .sort((a, b) => b.score - a.score || b.postedAt - a.postedAt);
   render();
+  verifyLanguages();
+}
+
+/* ---------------- LANGUAGE VERIFICATION ----------------
+   Scraped sources only give us titles, so we check each posting's own page
+   (via /api/detail) for a real German requirement. Results cached 7 days
+   in the browser; expired (404) postings are removed entirely. */
+async function verifyLanguages() {
+  const CK = "jr_lang_v1";
+  let cache = {}; try { cache = JSON.parse(localStorage.getItem(CK) || "{}"); } catch {}
+  const now = Date.now();
+  let applied = 0;
+  const apply = (j, c) => {
+    j.langChecked = true;
+    if (c.gone) { j.expired = true; }
+    else {
+      if (c.gr && !j.germanRequired) j.score = Math.max(0, j.score - 30);
+      if (!c.gr && j.germanRequired) j.score = Math.min(100, j.score + 30);
+      j.germanRequired = c.gr; j.germanLang = c.lang === "de"; j.germanPlus = !!c.plus;
+      j.band = j.score >= 65 ? "high" : j.score >= 45 ? "med" : "low";
+    }
+    if (++applied % 12 === 0) render();
+  };
+  const queue = JOBS.filter(j => !j.desc); // jobs without description = unverified
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (queue.length) {
+      const j = queue.shift();
+      const c = cache[j.id];
+      if (c && now - c.t < 7 * 864e5) { apply(j, c); continue; }
+      try {
+        const r = await fetch(`${API_BASE}/api/detail?url=${encodeURIComponent(j.url)}`);
+        const d = await r.json();
+        if (d.error && !d.gone) continue;
+        const rec = { gr: !!d.germanRequired, plus: !!d.germanPlus, lang: d.lang || "en", gone: !!d.gone, t: now };
+        cache[j.id] = rec; apply(j, rec);
+      } catch {}
+    }
+  }));
+  try { localStorage.setItem(CK, JSON.stringify(cache)); } catch {}
+  JOBS = JOBS.filter(j => !j.expired).sort((a, b) => b.score - a.score || b.postedAt - a.postedAt);
+  render();
 }
 
 /* ---------------- RENDER ---------------- */
@@ -282,7 +335,8 @@ function visible() {
   const q = document.getElementById("q").value.toLowerCase();
   const scope = document.getElementById("scope").value;
   const role = document.getElementById("role").value;
-  const hideDe = document.getElementById("hideDe").checked;
+  const engOnly = document.getElementById("engOnly").checked;
+  const maxAge = +document.getElementById("age").value;
   return JOBS.filter(j => {
     if (tab === "saved" && !saved.has(j.id)) return false;
     if (tab === "hidden" && !hidden.has(j.id)) return false;
@@ -292,7 +346,11 @@ function visible() {
     if (scope === "remote" && !j.remote) return false;
     if (scope === "core" && !inCity && !j.remote) return false;
     if (role !== "all" && j.tier !== role) return false;
-    if (hideDe && j.germanRequired) return false;
+    // Filter on the actual requirement (verified from the posting text where possible),
+    // NOT on the language the posting is written in.
+    if (engOnly && j.germanRequired) return false;
+    // Date filter: when active, jobs without a known posting date are hidden too
+    if (maxAge && (!j.postedAt || Date.now() - j.postedAt > maxAge * 864e5)) return false;
     if (q && !(j.title + " " + j.company + " " + j.tags.join(" ")).toLowerCase().includes(q)) return false;
     return true;
   });
@@ -315,7 +373,7 @@ function render() {
         <div class="meta"><span>${esc(j.company)}</span><span>${esc(j.location)}</span><span>${ago(j.postedAt)}</span><span>${j.source}</span></div>
         <div class="why">Why: <em>${j.why.join(" · ")}</em></div>
         <div class="tags">
-          ${j.germanRequired ? '<span class="tag dereq">German required</span>' : j.germanLang ? '<span class="tag de">Posted in German</span>' : ""}
+          ${j.germanRequired ? '<span class="tag dereq">German required' + (j.langChecked ? " ✓" : "") + '</span>' : j.germanPlus ? '<span class="tag fin">German a plus</span>' : j.germanLang ? '<span class="tag de">Posted in German</span>' : ""}
           ${j.fintech ? '<span class="tag fin">fintech</span>' : ""}
           ${j.tags.slice(0, 5).map(t => `<span class="tag">${esc(String(t))}</span>`).join("")}
         </div>
@@ -326,13 +384,15 @@ function render() {
         <button class="btn" onclick="toggleHide('${j.id}')">${hidden.has(j.id) ? "Unhide" : "Hide"}</button>
       </div>
     </div>`).join("");
-  footEl.textContent = `Showing ${Math.min(v.length, 150)} of ${v.length}. Sources return active listings only — links are valid as of page load. Reload for fresh data.`;
+  const pending = JOBS.filter(j => !j.desc && !j.langChecked).length;
+  footEl.textContent = (pending ? `Verifying language requirements from ${pending} postings… ` : "") +
+    `Showing ${Math.min(v.length, 150)} of ${v.length}. Sources return active listings only — links are valid as of page load. Reload for fresh data.`;
 }
 
 window.toggleSave = id => { saved.has(id) ? saved.delete(id) : saved.add(id); persist(); render(); };
 window.toggleHide = id => { hidden.has(id) ? hidden.delete(id) : hidden.add(id); persist(); render(); };
 
-["q", "scope", "role", "hideDe"].forEach(id => document.getElementById(id).addEventListener("input", render));
+["q", "scope", "role", "engOnly", "age"].forEach(id => document.getElementById(id).addEventListener("input", render));
 document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
   document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
   t.classList.add("active"); tab = t.dataset.tab; render();
